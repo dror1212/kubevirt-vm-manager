@@ -1,0 +1,19 @@
+# Binaries
+*.exe
+*.out
+
+# Build directory (optional)
+bin/
+
+# OS-specific files
+.DS_Store
+
+# Go-specific files
+go.sum
+
+# Dependency directory (optional, only if not committing vendor/)
+vendor/
+
+# Kubeconfig or private config files
+kubeconfig
+.env
