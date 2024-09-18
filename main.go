@@ -37,7 +37,7 @@ func main() {
 	resourceRequirements := util.GenerateResourceRequirements(cpuRequests, cpuLimits, memoryRequests, memoryLimits)
 
 	// Call the CreateVM function, passing the resource requirements
-    err = util.CreateVM(config, namespace, templateName, vmName, util.ConvertCoreV1ToKubeVirtResourceRequirements(resourceRequirements), waitForCreation, scriptPath)
+        err = util.CreateVM(config, namespace, templateName, vmName, util.ConvertCoreV1ToKubeVirtResourceRequirements(resourceRequirements), waitForCreation, scriptPath)
 	if err != nil {
 		log.Fatalf("Error creating VM: %v", err)
 	}
