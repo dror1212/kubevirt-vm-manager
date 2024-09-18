@@ -6,14 +6,13 @@ import (
 	"io/ioutil"
 	"strings"
 	"time"
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/serializer"
+
 	templatev1 "github.com/openshift/api/template/v1"
 	templateclientset "github.com/openshift/client-go/template/clientset/versioned"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/rest"
 	"myproject/consts"
 )
@@ -59,16 +58,28 @@ func mergeOrCreateCloudInit(existingData, scriptContent string) string {
 	return existingData
 }
 
-// CreateVM creates a VM using the given parameters and optionally waits for the VM creation to complete
-func CreateVM(config *rest.Config, scriptPath, namespace, templateName, vmName string, memory, cpuRequest, cpuLimit string, waitForCreation bool) error {
-	// Read the external script from a file
-	externalScript, err := readExternalScript(scriptPath)
-	if err != nil {
-		return fmt.Errorf("error reading external script: %v", err)
+// CreateVM creates a VM using the given parameters and resource requirements
+func CreateVM(config *rest.Config, namespace, templateName, vmName string, resourceRequirements *kubevirtv1.ResourceRequirements, waitForCreation bool, scriptPath string) error {
+	// Generate random VM name if not provided
+	if vmName == "" {
+		vmName = generateRandomName()
 	}
 
-	// Use constant for namespace where templates reside
-	templateNamespace := consts.DefaultTemplateNamespace
+	// Use default resource requirements if none are provided
+	if resourceRequirements == nil {
+		defaultResources := ConvertCoreV1ToKubeVirtResourceRequirements(consts.DefaultResources)
+		resourceRequirements = &defaultResources // Take the address of the default value
+	}
+
+	// Read the external script from a file if the scriptPath is provided
+	var externalScript string
+	if scriptPath != "" {
+		var err error
+		externalScript, err = readExternalScript(scriptPath)
+		if err != nil {
+			return fmt.Errorf("error reading external script: %v", err)
+		}
+	}
 
 	// Create a client for the OpenShift template API using the provided config
 	templateClient, err := templateclientset.NewForConfig(config)
@@ -77,10 +88,11 @@ func CreateVM(config *rest.Config, scriptPath, namespace, templateName, vmName s
 	}
 
 	// Fetch the template
-	template, err := templateClient.TemplateV1().Templates(templateNamespace).Get(context.TODO(), templateName, meta_v1.GetOptions{})
+	template, err := templateClient.TemplateV1().Templates(consts.DefaultTemplateNamespace).Get(context.TODO(), templateName, meta_v1.GetOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to get template: %v", err)
 	}
+
 	// Create a decoder to handle RawExtension objects
 	scheme := runtime.NewScheme()
 	_ = kubevirtv1.AddToScheme(scheme) // Register the KubeVirt scheme
@@ -97,27 +109,23 @@ func CreateVM(config *rest.Config, scriptPath, namespace, templateName, vmName s
 		vm, ok := decodedObj.(*kubevirtv1.VirtualMachine)
 		if ok {
 			// Set resource requests and limits for the VM
-			vm.Spec.Template.Spec.Domain.Resources = kubevirtv1.ResourceRequirements{
-				Requests: corev1.ResourceList{
-					corev1.ResourceMemory: resource.MustParse(memory),
-					corev1.ResourceCPU:    resource.MustParse(cpuRequest),
-				},
-				Limits: corev1.ResourceList{
-					corev1.ResourceMemory: resource.MustParse(memory),
-					corev1.ResourceCPU:    resource.MustParse(cpuLimit),
-				},
-			}
+			vm.Spec.Template.Spec.Domain.Resources = *resourceRequirements
+
+			// Set the VM name within the template object
+			vm.ObjectMeta.Name = vmName
 
 			// Ensure the VM starts automatically by setting 'Running' to true
-			vm.Spec.Running = new(bool)
-			*vm.Spec.Running = true
+			running := true
+			vm.Spec.Running = &running
 
-			// Modify the existing cloud-init data to include the script
-			for _, volume := range vm.Spec.Template.Spec.Volumes {
-				if volume.CloudInitNoCloud != nil {
-					mergedCloudInit := mergeOrCreateCloudInit(volume.CloudInitNoCloud.UserData, externalScript)
-					volume.CloudInitNoCloud.UserData = mergedCloudInit
-					break
+			// Modify the existing cloud-init data to include the script if provided
+			if scriptPath != "" {
+				for _, volume := range vm.Spec.Template.Spec.Volumes {
+					if volume.CloudInitNoCloud != nil {
+						mergedCloudInit := mergeOrCreateCloudInit(volume.CloudInitNoCloud.UserData, externalScript)
+						volume.CloudInitNoCloud.UserData = mergedCloudInit
+						break
+					}
 				}
 			}
 
@@ -152,30 +160,12 @@ func CreateVM(config *rest.Config, scriptPath, namespace, templateName, vmName s
 	// Wait for the VM creation if requested
 	if waitForCreation {
 		fmt.Printf("Waiting for the VM %s to be created...\n", vmName)
-		for {
-			ti, err := templateClient.TemplateV1().TemplateInstances(namespace).Get(context.TODO(), vmName, meta_v1.GetOptions{})
-			if err != nil {
-				return fmt.Errorf("failed to get TemplateInstance status: %v", err)
-			}
-
-			// Check if the TemplateInstance has been processed
-			processed := false
-			for _, condition := range ti.Status.Conditions {
-				if condition.Type == templatev1.TemplateInstanceReady && condition.Status == "True" {
-					processed = true
-					break
-				}
-			}
-			if processed {
-				fmt.Printf("VM %s has been created successfully.\n", vmName)
-				break
-			}
-
-			// Sleep before checking again
-			time.Sleep(30 * time.Second)
+		err = WaitForTemplateInstanceReady(templateClient, namespace, vmName, 5*time.Second, 120*time.Second)
+		if err != nil {
+			return fmt.Errorf("error waiting for VM to be ready: %v", err)
 		}
+		fmt.Printf("VM %s has been created successfully.\n", vmName)
 	}
 
 	return nil
 }
-
