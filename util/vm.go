@@ -11,6 +11,7 @@ import (
 	templateclientset "github.com/openshift/client-go/template/clientset/versioned"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kubecli "kubevirt.io/client-go/kubecli"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/rest"
@@ -59,7 +60,7 @@ func mergeOrCreateCloudInit(existingData, scriptContent string) string {
 }
 
 // CreateVM creates a VM using the given parameters and resource requirements
-func CreateVM(config *rest.Config, namespace, templateName, vmName string, resourceRequirements *kubevirtv1.ResourceRequirements, labels map[string]string, waitForCreation bool, scriptPath string) error {
+func CreateVM(config *rest.Config, namespace, templateName, vmName string, resourceRequirements *kubevirtv1.ResourceRequirements, labels map[string]string, waitForCreation bool, scriptPath string) (*kubevirtv1.VirtualMachine, error) {
 	// Generate random VM name if not provided
 	if vmName == "" {
 		vmName = generateRandomName()
@@ -83,20 +84,20 @@ func CreateVM(config *rest.Config, namespace, templateName, vmName string, resou
 		var err error
 		externalScript, err = readExternalScript(scriptPath)
 		if err != nil {
-			return fmt.Errorf("error reading external script: %v", err)
+			return nil, fmt.Errorf("error reading external script: %v", err)
 		}
 	}
 
 	// Create a client for the OpenShift template API using the provided config
 	templateClient, err := templateclientset.NewForConfig(config)
 	if err != nil {
-		return fmt.Errorf("failed to create template client: %v", err)
+		return nil, fmt.Errorf("failed to create template client: %v", err)
 	}
 
 	// Fetch the template
 	template, err := templateClient.TemplateV1().Templates(consts.DefaultTemplateNamespace).Get(context.TODO(), templateName, meta_v1.GetOptions{})
 	if err != nil {
-		return fmt.Errorf("failed to get template: %v", err)
+		return nil, fmt.Errorf("failed to get template: %v", err)
 	}
 
 	// Create a decoder to handle RawExtension objects
@@ -104,16 +105,22 @@ func CreateVM(config *rest.Config, namespace, templateName, vmName string, resou
 	_ = kubevirtv1.AddToScheme(scheme) // Register the KubeVirt scheme
 	decoder := serializer.NewCodecFactory(scheme).UniversalDeserializer()
 
+	var vm *kubevirtv1.VirtualMachine
+
 	// Iterate through the template objects and find the VirtualMachine
 	for i, obj := range template.Objects {
 		decodedObj, _, err := decoder.Decode(obj.Raw, nil, nil)
 		if err != nil {
-			return fmt.Errorf("failed to decode object in template: %v", err)
+			return nil, fmt.Errorf("failed to decode object in template: %v", err)
 		}
 
 		// Check if it's a VirtualMachine object
-		vm, ok := decodedObj.(*kubevirtv1.VirtualMachine)
+		decodedVM, ok := decodedObj.(*kubevirtv1.VirtualMachine)
+
 		if ok {
+            // Assign the decoded VM to the `vm` variable
+            vm = decodedVM
+
 			// Set resource requests and limits for the VM
 			vm.Spec.Template.Spec.Domain.Resources = *resourceRequirements
 
@@ -155,13 +162,18 @@ func CreateVM(config *rest.Config, namespace, templateName, vmName string, resou
 			// Convert the modified VM object back to RawExtension
 			raw, err := runtime.Encode(serializer.NewCodecFactory(scheme).LegacyCodec(kubevirtv1.SchemeGroupVersion), vm)
 			if err != nil {
-				return fmt.Errorf("failed to encode VM object: %v", err)
+				return nil, fmt.Errorf("failed to encode VM object: %v", err)
 			}
 
 			// Update the template's object with the modified VM
 			template.Objects[i].Raw = raw
 		}
 	}
+
+    // If no VM was found in the template, return an error
+    if vm == nil {
+        return nil, fmt.Errorf("no VirtualMachine object found in the template")
+    }
 
 	// Create a TemplateInstance
 	templateInstance := &templatev1.TemplateInstance{
@@ -174,21 +186,33 @@ func CreateVM(config *rest.Config, namespace, templateName, vmName string, resou
 		},
 	}
 
+	virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create KubeVirt client: %v", err)
+	}
+
 	// Create the TemplateInstance
 	_, err = templateClient.TemplateV1().TemplateInstances(namespace).Create(context.TODO(), templateInstance, meta_v1.CreateOptions{})
 	if err != nil {
-		return fmt.Errorf("failed to create TemplateInstance: %v", err)
+		return nil, fmt.Errorf("failed to create TemplateInstance: %v", err)
 	}
 
 	// Wait for the VM creation if requested
 	if waitForCreation {
-		fmt.Printf("Waiting for the VM %s to be created...\n", vmName)
+		fmt.Printf("Waiting for the TemplateInstance %s to be created...\n", vmName)
 		err = WaitForTemplateInstanceReady(templateClient, namespace, vmName, 5*time.Second, 120*time.Second)
 		if err != nil {
-			return fmt.Errorf("error waiting for VM to be ready: %v", err)
+			return nil, fmt.Errorf("error waiting for VM to be ready: %v", err)
+		}
+		fmt.Printf("TemplateInstance %s has been created successfully.\n", vmName)
+
+		fmt.Printf("Waiting for the VM %s to be created...\n", vmName)
+		err = WaitForVMReady(virtClient, namespace, vmName, 5*time.Second, 120*time.Second)
+		if err != nil {
+			return nil, fmt.Errorf("error waiting for VM to be ready: %v", err)
 		}
 		fmt.Printf("VM %s has been created successfully.\n", vmName)
 	}
 
-	return nil
+	return vm, nil // Return the created VM object
 }
