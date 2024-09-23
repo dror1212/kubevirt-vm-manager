@@ -30,7 +30,7 @@ func main() {
 	log.Println("Kubernetes connection verified successfully.")
 
 	// Pass nil for resourceRequirements to use default resources
-	err = util.CreateVM(config, namespace, templateName, vmName, nil, waitForCreation, scriptPath)
+	err = util.CreateVM(config, namespace, templateName, vmName, nil, nil, waitForCreation, scriptPath)
 	if err != nil {
 		log.Fatalf("Error creating VM: %v", err)
 	}

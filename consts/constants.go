@@ -21,3 +21,7 @@ var DefaultResources = corev1.ResourceRequirements{
         corev1.ResourceMemory: resource.MustParse("2Gi"),
     },
 }
+
+var DefaultLabels = map[string]string{
+    "managed": "openshift-testing",
+}

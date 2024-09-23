@@ -59,7 +59,7 @@ func mergeOrCreateCloudInit(existingData, scriptContent string) string {
 }
 
 // CreateVM creates a VM using the given parameters and resource requirements
-func CreateVM(config *rest.Config, namespace, templateName, vmName string, resourceRequirements *kubevirtv1.ResourceRequirements, waitForCreation bool, scriptPath string) error {
+func CreateVM(config *rest.Config, namespace, templateName, vmName string, resourceRequirements *kubevirtv1.ResourceRequirements, labels map[string]string, waitForCreation bool, scriptPath string) error {
 	// Generate random VM name if not provided
 	if vmName == "" {
 		vmName = generateRandomName()
@@ -69,6 +69,12 @@ func CreateVM(config *rest.Config, namespace, templateName, vmName string, resou
 	if resourceRequirements == nil {
 		defaultResources := ConvertCoreV1ToKubeVirtResourceRequirements(consts.DefaultResources)
 		resourceRequirements = &defaultResources // Take the address of the default value
+	}
+
+	// Set default labels if none are provided
+	if labels == nil {
+		labels = consts.DefaultLabels
+		labels["app"] = vmName
 	}
 
 	// Read the external script from a file if the scriptPath is provided
@@ -113,6 +119,23 @@ func CreateVM(config *rest.Config, namespace, templateName, vmName string, resou
 
 			// Set the VM name within the template object
 			vm.ObjectMeta.Name = vmName
+
+			if vm.ObjectMeta.Labels == nil {
+				vm.ObjectMeta.Labels = labels
+			} else {
+				for key, value := range labels {
+					vm.ObjectMeta.Labels[key] = value
+				}
+			}
+
+			// Set labels in the PodTemplateSpec so that the VM's pod inherits the same labels
+			if vm.Spec.Template.ObjectMeta.Labels == nil {
+				vm.Spec.Template.ObjectMeta.Labels = labels
+			} else {
+				for key, value := range labels {
+					vm.Spec.Template.ObjectMeta.Labels[key] = value
+				}
+			}
 
 			// Ensure the VM starts automatically by setting 'Running' to true
 			running := true

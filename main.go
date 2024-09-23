@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"myproject/util"
+    corev1 "k8s.io/api/core/v1"
 )
 
 func main() {
@@ -16,6 +17,13 @@ func main() {
 	memoryRequests := "2Gi"
 	memoryLimits := "2Gi"
 	waitForCreation := true // Set this to 'true' to wait for the VM creation
+    serviceName := "test-vm-2-service"
+    labels := map[string]string{
+        "app": vmName,
+    }
+    ports := []corev1.ServicePort{
+        util.GeneratePort("ssh", 22, 22, "TCP"),    // Open port 22 for SSH
+    }
 
 	// Authenticate using in-cluster config or kubeconfig
 	clientset, config, err := util.Authenticate()
@@ -35,12 +43,22 @@ func main() {
 
 	// Generate the resource requirements
 	resourceRequirements := util.GenerateResourceRequirements(cpuRequests, cpuLimits, memoryRequests, memoryLimits)
+    convertedResourceRequirements := util.ConvertCoreV1ToKubeVirtResourceRequirements(resourceRequirements)
 
 	// Call the CreateVM function, passing the resource requirements
-	err = util.CreateVM(config, namespace, templateName, vmName, util.ConvertCoreV1ToKubeVirtResourceRequirements(resourceRequirements), waitForCreation, scriptPath)
+	err = util.CreateVM(config, namespace, templateName, vmName, &convertedResourceRequirements, nil, waitForCreation, scriptPath)
 	if err != nil {
 		log.Fatalf("Error creating VM: %v", err)
 	}
 
 	log.Println("VM creation process completed successfully.")
+
+    // Create a LoadBalancer service for the VM
+    service, err := util.CreateService(clientset, namespace, serviceName, corev1.ServiceTypeLoadBalancer, ports, labels)
+    if err != nil {
+        log.Fatalf("Failed to create LoadBalancer service: %v", err)
+    }
+
+    log.Printf("LoadBalancer service %s created successfully", service.Name)
+
 }
