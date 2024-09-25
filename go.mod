@@ -5,6 +5,8 @@ go 1.22.3
 require (
 	github.com/openshift/api v0.0.0-20240911192208-3e5de946111c
 	github.com/openshift/client-go v0.0.0-20240906181530-b2f7c4ab0984
+	github.com/sirupsen/logrus v1.9.3
+	golang.org/x/crypto v0.27.0
 	k8s.io/api v0.30.1
 	k8s.io/apimachinery v0.30.1
 	k8s.io/client-go v0.30.1
@@ -42,7 +44,6 @@ require (
 	github.com/openshift/custom-resource-status v1.1.2 // indirect
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.68.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
-	golang.org/x/crypto v0.27.0 // indirect
 	golang.org/x/net v0.24.0 // indirect
 	golang.org/x/oauth2 v0.12.0 // indirect
 	golang.org/x/sys v0.25.0 // indirect

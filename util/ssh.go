@@ -1,12 +1,12 @@
 package util
 
 import (
-    "fmt"
     "golang.org/x/crypto/ssh"
     "io/ioutil"
 	"io"
     "os"
 	"time"
+    "fmt"
 )
 
 // SSHConfig holds the SSH configuration details
@@ -27,18 +27,18 @@ type SSHClient struct {
 func PollSSHConnection(sshConfig *SSHConfig, interval, timeout time.Duration) (*SSHClient, error) {
 	// Use the WaitFor utility to attempt SSH connection
 	err := WaitFor(func() (bool, error) {
-		client, err := NewSSHClient(sshConfig)
+		_, err := NewSSHClient(sshConfig)
 		if err == nil {
-			fmt.Println("SSH connection established successfully.")
-			sshClient := &SSHClient{config: sshConfig, client: client}
+			LogInfo("SSH connection established successfully.")
 			return true, nil // Return true if the connection is successful
 		}
-		fmt.Println("SSH not ready, retrying...")
+		LogInfo("SSH not ready, retrying...")
 		return false, nil // Return false to indicate retry
 	}, interval, timeout)
 
 	if err != nil {
-		return nil, fmt.Errorf("timed out waiting for SSH connection to become available: %v", err)
+		LogError("Timed out waiting for SSH connection to become available: %v", err)
+		return nil, err
 	}
 
 	// Return the successful SSH client
@@ -51,13 +51,15 @@ func NewSSHClient(config *SSHConfig) (*ssh.Client, error) {
 	// Read the private key file
 	key, err := ioutil.ReadFile(config.PrivateKey)
 	if err != nil {
-		return nil, fmt.Errorf("unable to read private key: %v", err)
+		LogError("Unable to read private key: %v", err)
+		return nil, err
 	}
 
 	// Parse the private key for use in authentication
 	signer, err := ssh.ParsePrivateKey(key)
 	if err != nil {
-		return nil, fmt.Errorf("unable to parse private key: %v", err)
+		LogError("Unable to parse private key: %v", err)
+		return nil, err
 	}
 
 	// Prepare the SSH configuration with the private key and user
@@ -72,12 +74,13 @@ func NewSSHClient(config *SSHConfig) (*ssh.Client, error) {
 
 	// Format the address as "host:port"
 	address := fmt.Sprintf("%s:%d", config.Host, config.Port)
-	fmt.Printf("Attempting to connect to SSH at %s...\n", address)
+	LogInfo("Attempting to connect to SSH at %s", address)
 
 	// Dial the SSH connection
 	client, err := ssh.Dial("tcp", address, sshConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to dial SSH: %v", err)
+		LogError("Failed to dial SSH: %v", err)
+		return nil, err
 	}
 
 	return client, nil
@@ -87,14 +90,16 @@ func NewSSHClient(config *SSHConfig) (*ssh.Client, error) {
 func (s *SSHClient) RunCommand(cmd string) (string, error) {
     session, err := s.client.NewSession()
     if err != nil {
-        return "", fmt.Errorf("failed to create session: %v", err)
+        LogError("Failed to create session: %v", err)
+        return "", err
     }
     defer session.Close()
 
     // Run the command
     output, err := session.CombinedOutput(cmd)
     if err != nil {
-        return "", fmt.Errorf("failed to run command: %v", err)
+        LogError("Failed to run command: %v", err)
+        return "", err
     }
 
     return string(output), nil
@@ -105,14 +110,16 @@ func (s *SSHClient) CopyFileToVM(localFilePath, remoteFilePath string) error {
     // Open the local file
     localFile, err := os.Open(localFilePath)
     if err != nil {
-        return fmt.Errorf("failed to open local file: %v", err)
+        LogError("Failed to open local file: %v", err)
+        return err
     }
     defer localFile.Close()
 
     // Create a new session for SCP
     session, err := s.client.NewSession()
     if err != nil {
-        return fmt.Errorf("failed to create session: %v", err)
+        LogError("Failed to create session: %v", err)
+        return err
     }
     defer session.Close()
 
@@ -120,13 +127,15 @@ func (s *SSHClient) CopyFileToVM(localFilePath, remoteFilePath string) error {
     remoteFileCommand := fmt.Sprintf("scp -t %s", remoteFilePath)
     pipe, err := session.StdinPipe()
     if err != nil {
-        return fmt.Errorf("failed to create stdin pipe: %v", err)
+        LogError("Failed to create stdin pipe: %v", err)
+        return err
     }
 
     // Start SCP session
     err = session.Start(remoteFileCommand)
     if err != nil {
-        return fmt.Errorf("failed to start SCP session: %v", err)
+        LogError("Failed to start SCP session: %v", err)
+        return err
     }
 
     // Copy file contents
@@ -138,9 +147,11 @@ func (s *SSHClient) CopyFileToVM(localFilePath, remoteFilePath string) error {
     // Wait for the session to complete
     err = session.Wait()
     if err != nil {
-        return fmt.Errorf("failed to copy file: %v", err)
+        LogError("Failed to copy file: %v", err)
+        return err
     }
 
+    LogInfo("Successfully copied file to %s", remoteFilePath)
     return nil
 }
 
@@ -152,5 +163,6 @@ func (s *SSHClient) ReadFileContent(remoteFilePath string) (string, error) {
 
 // Close closes the SSH connection
 func (s *SSHClient) Close() {
+    LogInfo("Closing SSH connection")
     s.client.Close()
 }

@@ -14,12 +14,16 @@ func WaitFor(checkFunc func() (bool, error), interval time.Duration, timeout tim
 	for {
 		select {
 		case <-timeoutChan:
-			return fmt.Errorf("timeout reached while waiting")
+			errMsg := "Timeout reached while waiting"
+			LogError(errMsg)
+			return fmt.Errorf(errMsg)
 		case <-ticker.C:
 			// Check the condition function
 			ready, err := checkFunc()
 			if err != nil {
-				return fmt.Errorf("error during wait: %v", err)
+				errMsg := "Error during wait: %v"
+				LogError(errMsg, err)
+				return fmt.Errorf(errMsg, err)
 			}
 			if ready {
 				return nil

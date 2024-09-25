@@ -9,7 +9,6 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 )
 
 // Authenticate sets up the Kubernetes client using in-cluster config or a kubeconfig file.
@@ -22,15 +21,20 @@ func Authenticate() (*kubernetes.Clientset, *rest.Config, error) {
 	// Try in-cluster configuration (for use inside Kubernetes)
 	config, err = rest.InClusterConfig()
 	if err != nil {
+		LogWarn("Failed to load in-cluster config, falling back to KUBECONFIG: %v", err)
+		
 		// Fall back to using kubeconfig from the environment or home directory
 		kubeconfigPath := os.Getenv("KUBECONFIG")
 		if kubeconfigPath != "" {
 			config, err = clientcmd.BuildConfigFromFlags("", kubeconfigPath)
+			LogInfo("Using KUBECONFIG path: %s", kubeconfigPath)
 		} else {
 			// Use default kubeconfig in the home directory
 			config, err = clientcmd.BuildConfigFromFlags("", clientcmd.RecommendedHomeFile)
+			LogInfo("Using default KUBECONFIG from home directory")
 		}
 		if err != nil {
+			LogError("Failed to load KUBECONFIG: %v", err)
 			return nil, nil, err
 		}
 	}
@@ -38,9 +42,11 @@ func Authenticate() (*kubernetes.Clientset, *rest.Config, error) {
 	// Create the Kubernetes clientset
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
+		LogError("Failed to create Kubernetes clientset: %v", err)
 		return nil, nil, err
 	}
 
+	LogInfo("Kubernetes client successfully authenticated.")
 	return clientset, config, nil
 }
 
@@ -52,21 +58,28 @@ func AuthenticateFile(kubeconfigPath string) (*kubernetes.Clientset, *rest.Confi
 
 	// Check if the kubeconfig file exists
 	if _, err := os.Stat(kubeconfigPath); os.IsNotExist(err) {
-		return nil, nil, fmt.Errorf("kubeconfig file %s does not exist", kubeconfigPath)
+		errMsg := "Kubeconfig file %s does not exist"
+		LogError(errMsg, kubeconfigPath)
+		return nil, nil, fmt.Errorf(errMsg, kubeconfigPath)
 	}
 
 	// Load the kubeconfig file
 	config, err = clientcmd.BuildConfigFromFlags("", kubeconfigPath)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to load kubeconfig: %v", err)
+		errMsg := "Failed to load kubeconfig: %v"
+		LogError(errMsg, err)
+		return nil, nil, fmt.Errorf(errMsg, err)
 	}
 
 	// Create the Kubernetes clientset
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create clientset: %v", err)
+		errMsg := "Failed to create Kubernetes clientset: %v"
+		LogError(errMsg, err)
+		return nil, nil, fmt.Errorf(errMsg, err)
 	}
 
+	LogInfo("Kubernetes client successfully authenticated with kubeconfig: %s", kubeconfigPath)
 	return clientset, config, nil
 }
 
@@ -76,7 +89,10 @@ func VerifyConnection(clientset *kubernetes.Clientset) error {
 	// Attempt to list namespaces to verify connection
 	_, err := clientset.CoreV1().Namespaces().List(context.TODO(), meta_v1.ListOptions{})
 	if err != nil {
-		return fmt.Errorf("failed to verify connection: %v", err)
+		errMsg := "failed to verify connection: %v"
+		LogError(errMsg, err)
+		return fmt.Errorf(errMsg, err)
 	}
+	LogInfo("Kubernetes connection verified successfully.")
 	return nil
 }

@@ -2,10 +2,10 @@ package util
 
 import (
 	"context"
-	"fmt"
 	"io/ioutil"
 	"strings"
 	"time"
+    "fmt"
 
 	templatev1 "github.com/openshift/api/template/v1"
 	templateclientset "github.com/openshift/client-go/template/clientset/versioned"
@@ -22,7 +22,8 @@ import (
 func readExternalScript(filePath string) (string, error) {
 	content, err := ioutil.ReadFile(filePath)
 	if err != nil {
-		return "", fmt.Errorf("failed to read external script: %w", err)
+		LogError("Failed to read external script: %v", err)
+		return "", err
 	}
 	return string(content), nil
 }
@@ -61,182 +62,174 @@ func mergeOrCreateCloudInit(existingData, scriptContent string) string {
 
 // addSSHKeyToCloudInit modifies the cloud-init to include the SSH public key
 func addSSHKeyToCloudInit(existingData, sshPublicKey string) string {
-    existingData = strings.TrimSpace(existingData)
+	existingData = strings.TrimSpace(existingData)
 
-    if !strings.HasPrefix(existingData, "#cloud-config") {
-        existingData = "#cloud-config\n" + existingData
-    }
+	if !strings.HasPrefix(existingData, "#cloud-config") {
+		existingData = "#cloud-config\n" + existingData
+	}
 
-    if strings.Contains(existingData, "ssh_authorized_keys:") {
+	if strings.Contains(existingData, "ssh_authorized_keys:") {
         existingData = strings.Replace(existingData, "ssh_authorized_keys:", fmt.Sprintf("ssh_authorized_keys:\n  - %s", sshPublicKey), 1)
-    } else {
+	} else {
         existingData += fmt.Sprintf("\nssh_authorized_keys:\n  - %s", sshPublicKey)
-    }
+	}
 
-    return existingData
+	return existingData
 }
 
 // CreateVM creates a VM using the given parameters and optionally adds an SSH public key
 func CreateVM(config *rest.Config, namespace, templateName, vmName string, resourceRequirements *kubevirtv1.ResourceRequirements, labels map[string]string, waitForCreation bool, scriptPath, sshPublicKeyPath string) (*kubevirtv1.VirtualMachine, error) {
-    // Generate random VM name if not provided
-    if vmName == "" {
-        vmName = generateRandomName()
-    }
+	if vmName == "" {
+		vmName = generateRandomName()
+		LogInfo("Generated random VM name: %s", vmName)
+	}
 
-    // Use default resource requirements if none are provided
-    if resourceRequirements == nil {
-        defaultResources := ConvertCoreV1ToKubeVirtResourceRequirements(consts.DefaultResources)
-        resourceRequirements = &defaultResources // Take the address of the default value
-    }
+	if resourceRequirements == nil {
+		defaultResources := ConvertCoreV1ToKubeVirtResourceRequirements(consts.DefaultResources)
+		resourceRequirements = &defaultResources
+		LogInfo("Using default resource requirements")
+	}
 
-    // Set default labels if none are provided
-    if labels == nil {
-        labels = consts.DefaultLabels
-        labels["app"] = vmName
-    }
+	if labels == nil {
+		labels = consts.DefaultLabels
+		labels["app"] = vmName
+		LogInfo("Using default labels for VM: %s", vmName)
+	}
 
-    // Read the external script from a file if the scriptPath is provided
-    var externalScript string
-    if scriptPath != "" {
-        var err error
-        externalScript, err = readExternalScript(scriptPath)
-        if err != nil {
-            return nil, fmt.Errorf("error reading external script: %v", err)
-        }
-    }
+	var externalScript string
+	if scriptPath != "" {
+		var err error
+		externalScript, err = readExternalScript(scriptPath)
+		if err != nil {
+			return nil, err
+		}
+		LogInfo("Successfully read external script from %s", scriptPath)
+	}
 
-    // Create a client for the OpenShift template API using the provided config
-    templateClient, err := templateclientset.NewForConfig(config)
-    if err != nil {
-        return nil, fmt.Errorf("failed to create template client: %v", err)
-    }
+	templateClient, err := templateclientset.NewForConfig(config)
+	if err != nil {
+		LogError("Failed to create template client: %v", err)
+		return nil, err
+	}
 
-    // Fetch the template
-    template, err := templateClient.TemplateV1().Templates(consts.DefaultTemplateNamespace).Get(context.TODO(), templateName, meta_v1.GetOptions{})
-    if err != nil {
-        return nil, fmt.Errorf("failed to get template: %v", err)
-    }
+	template, err := templateClient.TemplateV1().Templates(consts.DefaultTemplateNamespace).Get(context.TODO(), templateName, meta_v1.GetOptions{})
+	if err != nil {
+		LogError("Failed to fetch template: %v", err)
+		return nil, err
+	}
 
-    // Create a decoder to handle RawExtension objects
-    scheme := runtime.NewScheme()
-    _ = kubevirtv1.AddToScheme(scheme)
-    decoder := serializer.NewCodecFactory(scheme).UniversalDeserializer()
+	scheme := runtime.NewScheme()
+	_ = kubevirtv1.AddToScheme(scheme)
+	decoder := serializer.NewCodecFactory(scheme).UniversalDeserializer()
 
-    var vm *kubevirtv1.VirtualMachine
+	var vm *kubevirtv1.VirtualMachine
+	for i, obj := range template.Objects {
+		decodedObj, _, err := decoder.Decode(obj.Raw, nil, nil)
+		if err != nil {
+			LogError("Failed to decode object in template: %v", err)
+			return nil, err
+		}
 
-    // Iterate through the template objects and find the VirtualMachine
-    for i, obj := range template.Objects {
-        decodedObj, _, err := decoder.Decode(obj.Raw, nil, nil)
-        if err != nil {
-            return nil, fmt.Errorf("failed to decode object in template: %v", err)
-        }
+		decodedVM, ok := decodedObj.(*kubevirtv1.VirtualMachine)
+		if ok {
+			vm = decodedVM
 
-        // Check if it's a VirtualMachine object
-        decodedVM, ok := decodedObj.(*kubevirtv1.VirtualMachine)
-        if ok {
-            vm = decodedVM
+			vm.Spec.Template.Spec.Domain.Resources = *resourceRequirements
+			vm.ObjectMeta.Name = vmName
 
-            // Set resource requests and limits for the VM
-            vm.Spec.Template.Spec.Domain.Resources = *resourceRequirements
+			if vm.ObjectMeta.Labels == nil {
+				vm.ObjectMeta.Labels = labels
+			} else {
+				for key, value := range labels {
+					vm.ObjectMeta.Labels[key] = value
+				}
+			}
 
-            // Set the VM name within the template object
-            vm.ObjectMeta.Name = vmName
+			if vm.Spec.Template.ObjectMeta.Labels == nil {
+				vm.Spec.Template.ObjectMeta.Labels = labels
+			} else {
+				for key, value := range labels {
+					vm.Spec.Template.ObjectMeta.Labels[key] = value
+				}
+			}
 
-            if vm.ObjectMeta.Labels == nil {
-                vm.ObjectMeta.Labels = labels
-            } else {
-                for key, value := range labels {
-                    vm.ObjectMeta.Labels[key] = value
-                }
-            }
+			running := true
+			vm.Spec.Running = &running
 
-            // Set labels in the PodTemplateSpec so that the VM's pod inherits the same labels
-            if vm.Spec.Template.ObjectMeta.Labels == nil {
-                vm.Spec.Template.ObjectMeta.Labels = labels
-            } else {
-                for key, value := range labels {
-                    vm.Spec.Template.ObjectMeta.Labels[key] = value
-                }
-            }
+			for _, volume := range vm.Spec.Template.Spec.Volumes {
+				if volume.CloudInitNoCloud != nil {
+					if sshPublicKeyPath != "" {
+						sshPublicKey, err := ioutil.ReadFile(sshPublicKeyPath)
+						if err != nil {
+							LogError("Failed to read SSH public key: %v", err)
+							return nil, err
+						}
+						volume.CloudInitNoCloud.UserData = addSSHKeyToCloudInit(volume.CloudInitNoCloud.UserData, string(sshPublicKey))
+					}
 
-            // Ensure the VM starts automatically by setting 'Running' to true
-            running := true
-            vm.Spec.Running = &running
+					if scriptPath != "" {
+						mergedCloudInit := mergeOrCreateCloudInit(volume.CloudInitNoCloud.UserData, externalScript)
+						volume.CloudInitNoCloud.UserData = mergedCloudInit
+					}
+					break
+				}
+			}
 
-            // Modify the existing cloud-init data to include the script if provided
-            for _, volume := range vm.Spec.Template.Spec.Volumes {
-                if volume.CloudInitNoCloud != nil {
-                    // Add the SSH public key to cloud-init if the path is provided
-                    if sshPublicKeyPath != "" {
-                        sshPublicKey, err := ioutil.ReadFile(sshPublicKeyPath)
-                        if err != nil {
-                            return nil, fmt.Errorf("failed to read SSH public key: %v", err)
-                        }
-                        volume.CloudInitNoCloud.UserData = addSSHKeyToCloudInit(volume.CloudInitNoCloud.UserData, string(sshPublicKey))
-                    }
+			raw, err := runtime.Encode(serializer.NewCodecFactory(scheme).LegacyCodec(kubevirtv1.SchemeGroupVersion), vm)
+			if err != nil {
+				LogError("Failed to encode VM object: %v", err)
+				return nil, err
+			}
 
-                    // Add external script if provided
-                    if scriptPath != "" {
-                        mergedCloudInit := mergeOrCreateCloudInit(volume.CloudInitNoCloud.UserData, externalScript)
-                        volume.CloudInitNoCloud.UserData = mergedCloudInit
-                    }
-                    break
-                }
-            }
+			template.Objects[i].Raw = raw
+		}
+	}
 
-            // Convert the modified VM object back to RawExtension
-            raw, err := runtime.Encode(serializer.NewCodecFactory(scheme).LegacyCodec(kubevirtv1.SchemeGroupVersion), vm)
-            if err != nil {
-                return nil, fmt.Errorf("failed to encode VM object: %v", err)
-            }
+	if vm == nil {
+        errMsg := "No VirtualMachine object found in the template"
+		LogError(errMsg)
+		return nil, fmt.Errorf(errMsg)
+	}
 
-            // Update the template's object with the modified VM
-            template.Objects[i].Raw = raw
-        }
-    }
+	templateInstance := &templatev1.TemplateInstance{
+		ObjectMeta: meta_v1.ObjectMeta{
+			Name:      vmName,
+			Namespace: namespace,
+		},
+		Spec: templatev1.TemplateInstanceSpec{
+			Template: *template,
+		},
+	}
 
-    if vm == nil {
-        return nil, fmt.Errorf("no VirtualMachine object found in the template")
-    }
+	virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(config)
+	if err != nil {
+		LogError("Failed to create KubeVirt client: %v", err)
+		return nil, err
+	}
 
-    // Create a TemplateInstance
-    templateInstance := &templatev1.TemplateInstance{
-        ObjectMeta: meta_v1.ObjectMeta{
-            Name:      vmName,
-            Namespace: namespace,
-        },
-        Spec: templatev1.TemplateInstanceSpec{
-            Template: *template,
-        },
-    }
+	_, err = templateClient.TemplateV1().TemplateInstances(namespace).Create(context.TODO(), templateInstance, meta_v1.CreateOptions{})
+	if err != nil {
+		LogError("Failed to create TemplateInstance: %v", err)
+		return nil, err
+	}
 
-    virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(config)
-    if err != nil {
-        return nil, fmt.Errorf("failed to create KubeVirt client: %v", err)
-    }
+	if waitForCreation {
+		LogInfo("Waiting for the TemplateInstance %s to be created", vmName)
+		err = WaitForTemplateInstanceReady(templateClient, namespace, vmName, 5*time.Second, 120*time.Second)
+		if err != nil {
+			LogError("Error waiting for TemplateInstance: %v", err)
+			return nil, err
+		}
+		LogInfo("TemplateInstance %s has been created", vmName)
 
-    // Create the TemplateInstance
-    _, err = templateClient.TemplateV1().TemplateInstances(namespace).Create(context.TODO(), templateInstance, meta_v1.CreateOptions{})
-    if err != nil {
-        return nil, fmt.Errorf("failed to create TemplateInstance: %v", err)
-    }
+		LogInfo("Waiting for the VM %s to be created", vmName)
+		err = WaitForVMReady(virtClient, namespace, vmName, 5*time.Second, 120*time.Second)
+		if err != nil {
+			LogError("Error waiting for VM: %v", err)
+			return nil, err
+		}
+		LogInfo("VM %s has been created successfully", vmName)
+	}
 
-    // Wait for the VM creation if requested
-    if waitForCreation {
-        fmt.Printf("Waiting for the TemplateInstance %s to be created...\n", vmName)
-        err = WaitForTemplateInstanceReady(templateClient, namespace, vmName, 5*time.Second, 120*time.Second)
-        if err != nil {
-            return nil, fmt.Errorf("error waiting for VM to be ready: %v", err)
-        }
-        fmt.Printf("TemplateInstance %s has been created successfully.\n", vmName)
-
-        fmt.Printf("Waiting for the VM %s to be created...\n", vmName)
-        err = WaitForVMReady(virtClient, namespace, vmName, 5*time.Second, 120*time.Second)
-        if err != nil {
-            return nil, fmt.Errorf("error waiting for VM to be ready: %v", err)
-        }
-        fmt.Printf("VM %s has been created successfully.\n", vmName)
-    }
-
-    return vm, nil // Return the created VM object
+	return vm, nil
 }

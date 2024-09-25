@@ -62,7 +62,7 @@ func CreateService(clientset *kubernetes.Clientset, namespace, serviceName strin
 
 	// If the service type is LoadBalancer, wait for the external IP to be assigned
 	if serviceType == corev1.ServiceTypeLoadBalancer {
-		fmt.Printf("Waiting for the LoadBalancer service %s to get an external IP...\n", serviceName)
+		LogInfo("Waiting for the LoadBalancer service %s to get an external IP...\n", serviceName)
 		err := WaitForServiceReady(clientset, namespace, serviceName, 5*time.Second, 120*time.Second)
 		if err != nil {
 			return nil, fmt.Errorf("error waiting for service to be ready: %v", err)
@@ -74,7 +74,7 @@ func CreateService(clientset *kubernetes.Clientset, namespace, serviceName strin
 			return nil, fmt.Errorf("failed to get service after waiting: %v", err)
 		}
 
-		fmt.Printf("Service %s is ready with external IP: %s\n", serviceName, service.Status.LoadBalancer.Ingress[0].IP)
+		LogInfo("Service %s is ready with external IP: %s\n", serviceName, service.Status.LoadBalancer.Ingress[0].IP)
 	}
 
 	return service, nil
