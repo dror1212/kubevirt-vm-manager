@@ -25,17 +25,25 @@ type SSHClient struct {
 
 // PollSSHConnection tries to establish an SSH connection until it succeeds or times out.
 func PollSSHConnection(sshConfig *SSHConfig, interval, timeout time.Duration) (*SSHClient, error) {
-	start := time.Now()
-	for time.Since(start) < timeout {
+	// Use the WaitFor utility to attempt SSH connection
+	err := WaitFor(func() (bool, error) {
 		client, err := NewSSHClient(sshConfig)
 		if err == nil {
 			fmt.Println("SSH connection established successfully.")
-			return &SSHClient{config: sshConfig, client: client}, nil
+			sshClient := &SSHClient{config: sshConfig, client: client}
+			return true, nil // Return true if the connection is successful
 		}
 		fmt.Println("SSH not ready, retrying...")
-		time.Sleep(interval)
+		return false, nil // Return false to indicate retry
+	}, interval, timeout)
+
+	if err != nil {
+		return nil, fmt.Errorf("timed out waiting for SSH connection to become available: %v", err)
 	}
-	return nil, fmt.Errorf("timed out waiting for SSH connection to become available")
+
+	// Return the successful SSH client
+	client, _ := NewSSHClient(sshConfig)
+	return &SSHClient{config: sshConfig, client: client}, nil
 }
 
 // NewSSHClient is your existing function to create an SSH client.
