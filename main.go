@@ -118,4 +118,9 @@ func main() {
 
 	// Print the content of the file
 	fmt.Printf("File content of /tmp/os_info.txt: \n%s\n", fileContent)
+
+	// Check if a specific word exists
+	word := "x86_64"
+	wordFound := util.CheckWordPresence(fileContent, word)
+	log.Printf("Word '%s' found: %v", word, wordFound)
 }
