@@ -9,9 +9,6 @@ func main() {
 	// Define parameters
 	namespace := "core"
 	templateName := "rhel8-4-az-a"
-	scriptPath := ""
-	vmName := ""
-	waitForCreation := false // Set this to 'true' to wait for the VM creation
 
 	// Authenticate using in-cluster config or kubeconfig
 	clientset, config, err := util.Authenticate()
@@ -30,7 +27,7 @@ func main() {
 	log.Println("Kubernetes connection verified successfully.")
 
 	// Pass nil for resourceRequirements to use default resources
-	vm, err := util.CreateVM(config, namespace, templateName, vmName, nil, nil, waitForCreation, scriptPath)
+	vm, err := util.CreateVM(config, namespace, templateName, "", nil, nil, false, "", "")
 	if err != nil {
 		log.Fatalf("Error creating VM: %v", err)
 	}

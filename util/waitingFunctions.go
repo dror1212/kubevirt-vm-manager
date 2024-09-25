@@ -55,3 +55,20 @@ func WaitForTemplateInstanceReady(templateClient *templateclientset.Clientset, n
 		return false, nil
 	}, interval, timeout)
 }
+
+// WaitForServiceReady waits for a Kubernetes service (LoadBalancer type) to have an external IP.
+func WaitForServiceReady(clientset *kubernetes.Clientset, namespace, serviceName string, interval, timeout time.Duration) error {
+	return WaitFor(func() (bool, error) {
+		service, err := clientset.CoreV1().Services(namespace).Get(context.TODO(), serviceName, meta_v1.GetOptions{})
+		if err != nil {
+			return false, err
+		}
+
+		// For LoadBalancer type services, we want to ensure that an external IP is assigned
+		if len(service.Status.LoadBalancer.Ingress) > 0 && service.Status.LoadBalancer.Ingress[0].IP != "" {
+			return true, nil
+		}
+
+		return false, nil
+	}, interval, timeout)
+}

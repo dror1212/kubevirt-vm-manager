@@ -3,6 +3,7 @@ package util
 import (
 	"context"
 	"fmt"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -47,8 +48,8 @@ func CreateService(clientset *kubernetes.Clientset, namespace, serviceName strin
 			Namespace: namespace,
 		},
 		Spec: corev1.ServiceSpec{
-			Type:  serviceType,
-			Ports: ports,
+			Type:     serviceType,
+			Ports:    ports,
 			Selector: labels, // Use the provided labels for the selector
 		},
 	}
@@ -57,6 +58,23 @@ func CreateService(clientset *kubernetes.Clientset, namespace, serviceName strin
 	service, err := clientset.CoreV1().Services(namespace).Create(context.TODO(), service, meta_v1.CreateOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create service: %v", err)
+	}
+
+	// If the service type is LoadBalancer, wait for the external IP to be assigned
+	if serviceType == corev1.ServiceTypeLoadBalancer {
+		fmt.Printf("Waiting for the LoadBalancer service %s to get an external IP...\n", serviceName)
+		err := WaitForServiceReady(clientset, namespace, serviceName, 5*time.Second, 120*time.Second)
+		if err != nil {
+			return nil, fmt.Errorf("error waiting for service to be ready: %v", err)
+		}
+
+		// Fetch the service again to get the updated external IP
+		service, err = clientset.CoreV1().Services(namespace).Get(context.TODO(), serviceName, meta_v1.GetOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to get service after waiting: %v", err)
+		}
+
+		fmt.Printf("Service %s is ready with external IP: %s\n", serviceName, service.Status.LoadBalancer.Ingress[0].IP)
 	}
 
 	return service, nil
