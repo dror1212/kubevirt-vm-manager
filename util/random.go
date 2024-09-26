@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// generateRandomVMName generates a random VM name
+// generateRandomName generates a random VM name
 func generateRandomName() string {
 	rand.Seed(time.Now().UnixNano())
 	letters := []rune("abcdefghijklmnopqrstuvwxyz0123456789")
@@ -13,5 +13,5 @@ func generateRandomName() string {
 	for i := range name {
 		name[i] = letters[rand.Intn(len(letters))]
 	}
-	return "vm-" + string(name)
+	return string(name)
 }
