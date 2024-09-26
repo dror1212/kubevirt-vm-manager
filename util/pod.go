@@ -3,6 +3,8 @@ package util
 import (
 	"context"
 	"time"
+	"bytes"
+	"io"
 
 	corev1 "k8s.io/api/core/v1"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,7 +25,7 @@ type ContainerConfig struct {
 // CreatePod creates a Pod with multiple containers specified by the ContainerConfig list.
 func CreatePod(config *rest.Config, namespace, podName string, containerConfigs []ContainerConfig, labels map[string]string, waitForCreation bool) (*corev1.Pod, error) {
 	if podName == "" {
-		podName = generateRandomName()
+		podName = GenerateRandomName()
 		LogInfo("Generated random Pod name: %s", podName)
 	}
 
@@ -79,6 +81,24 @@ func CreatePod(config *rest.Config, namespace, podName string, containerConfigs 
 	}
 
 	return createdPod, nil
+}
+
+// GetPodLogs fetches the logs from a specific pod
+func GetPodLogs(clientset *kubernetes.Clientset, namespace, podName string) (string, error) {
+    podLogOpts := corev1.PodLogOptions{}
+    podLogRequest := clientset.CoreV1().Pods(namespace).GetLogs(podName, &podLogOpts)
+    podLogs, err := podLogRequest.Stream(context.TODO())
+    if err != nil {
+        return "", err
+    }
+    defer podLogs.Close()
+
+    buf := new(bytes.Buffer)
+    _, err = io.Copy(buf, podLogs)
+    if err != nil {
+        return "", err
+    }
+    return buf.String(), nil
 }
 
 // generateContainerFromConfig creates a container spec from the given ContainerConfig

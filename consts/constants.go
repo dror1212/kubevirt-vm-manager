@@ -10,6 +10,11 @@ const (
     DefaultTemplateNamespace = "openshift"
 )
 
+const (
+    // Tests Consts
+    TestPrefix = "functional-test"
+)
+
 // DefaultResources defines the default resource requests and limits for VMs
 var DefaultResources = corev1.ResourceRequirements{
     Requests: corev1.ResourceList{

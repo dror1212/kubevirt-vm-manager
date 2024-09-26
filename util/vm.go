@@ -80,7 +80,7 @@ func addSSHKeyToCloudInit(existingData, sshPublicKey string) string {
 // CreateVM creates a VM using the given parameters and optionally adds an SSH public key
 func CreateVM(config *rest.Config, namespace, templateName, vmName string, resourceRequirements *kubevirtv1.ResourceRequirements, labels map[string]string, waitForCreation bool, scriptPath, sshPublicKeyPath string) (*kubevirtv1.VirtualMachine, error) {
 	if vmName == "" {
-		vmName = generateRandomName()
+		vmName = GenerateRandomName()
 		LogInfo("Generated random VM name: %s", vmName)
 	}
 
@@ -232,4 +232,47 @@ func CreateVM(config *rest.Config, namespace, templateName, vmName string, resou
 	}
 
 	return vm, nil
+}
+
+// GetVMPodIP fetches the Pod IP associated with the given VM
+func GetVMPodIP(virtClient kubecli.KubevirtClient, namespace, vmName string) (string, error) {
+	// Fetch the VM object
+	vm, err := virtClient.VirtualMachine(namespace).Get(context.TODO(), vmName, meta_v1.GetOptions{}) // Correct: pass by value
+	if err != nil {
+		LogError("Failed to fetch VM: %v", err)
+		return "", fmt.Errorf("failed to fetch VM: %v", err)
+	}
+
+	// Ensure the VM is running
+	if vm.Status.PrintableStatus != "Running" {
+		errMsg := fmt.Sprintf("VM %s is not in 'Running' state", vmName)
+		LogError(errMsg)
+		return "", fmt.Errorf(errMsg)
+	}
+
+	// Fetch the pod associated with the VM
+	podList, err := virtClient.CoreV1().Pods(namespace).List(context.TODO(), meta_v1.ListOptions{
+		LabelSelector: fmt.Sprintf("app=%s", vmName),
+	})
+	if err != nil {
+		LogError("Failed to list pods for VM %s: %v", vmName, err)
+		return "", fmt.Errorf("failed to list pods for VM %s: %v", vmName, err)
+	}
+
+	if len(podList.Items) == 0 {
+		errMsg := fmt.Sprintf("No pods found for VM %s", vmName)
+		LogError(errMsg)
+		return "", fmt.Errorf(errMsg)
+	}
+
+	// Extract the Pod IP from the first matching pod
+	pod := podList.Items[0]
+	if pod.Status.PodIP == "" {
+		errMsg := fmt.Sprintf("Pod for VM %s does not have a valid Pod IP", vmName)
+		LogError(errMsg)
+		return "", fmt.Errorf(errMsg)
+	}
+
+	LogInfo("Pod IP for VM %s is %s", vmName, pod.Status.PodIP)
+	return pod.Status.PodIP, nil
 }

@@ -79,3 +79,15 @@ func CreateService(clientset *kubernetes.Clientset, namespace, serviceName strin
 
 	return service, nil
 }
+
+// GetExternalIP fetches the external IP of a LoadBalancer service
+func GetExternalIP(clientset *kubernetes.Clientset, namespace, serviceName string) (string, error) {
+    service, err := clientset.CoreV1().Services(namespace).Get(context.TODO(), serviceName, meta_v1.GetOptions{})
+    if err != nil {
+        return "", err
+    }
+    if len(service.Status.LoadBalancer.Ingress) > 0 {
+        return service.Status.LoadBalancer.Ingress[0].IP, nil
+    }
+    return "", nil
+}

@@ -13,6 +13,30 @@ import (
 	"kubevirt.io/client-go/kubecli"
 )
 
+func WaitForPodCompletionOrFailure(clientset *kubernetes.Clientset, namespace, podName string, interval, timeout time.Duration) error {
+	return WaitFor(func() (bool, error) {
+		pod, err := clientset.CoreV1().Pods(namespace).Get(context.TODO(), podName, meta_v1.GetOptions{})
+		if err != nil {
+			LogError("Error fetching pod: %v", err)
+			return false, err
+		}
+
+		// Check if the pod is either completed successfully or failed
+		switch pod.Status.Phase {
+		case corev1.PodSucceeded:
+			LogInfo("Pod %s has completed successfully.", podName)
+			return true, nil
+		case corev1.PodFailed:
+			LogError("Pod %s has failed.", podName)
+			return true, fmt.Errorf("pod %s has failed", podName) // Return true here to stop the waiting
+		}
+
+		// Log the current phase of the pod if it hasn't completed
+		LogInfo("Pod %s is in phase: %s", podName, pod.Status.Phase)
+		return false, nil
+	}, interval, timeout)
+}
+
 // WaitForPodRunning waits for a Pod to reach the Running or Completed state.
 func WaitForPodRunning(clientset *kubernetes.Clientset, namespace, podName string, interval, timeout time.Duration) error {
 	return WaitFor(func() (bool, error) {
@@ -37,6 +61,7 @@ func WaitForPodRunning(clientset *kubernetes.Clientset, namespace, podName strin
 		}
 	}, interval, timeout)
 }
+
 // WaitForVMReady waits for a KubeVirt VM to be ready.
 func WaitForVMReady(virtClient kubecli.KubevirtClient, namespace, vmName string, interval, timeout time.Duration) error {
 	return WaitFor(func() (bool, error) {

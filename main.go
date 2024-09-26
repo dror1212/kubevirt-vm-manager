@@ -13,7 +13,7 @@ import (
 
 func main() {
     // Define parameters
-    scriptPath := "./print_os_info.sh"
+    scriptPath := "./scripts/print_os_info.sh"
     namespace := "core"
     templateName := "rhel8-4-az-a"
     vmName := "test-vm-2"

@@ -5,8 +5,8 @@ import (
 	"time"
 )
 
-// generateRandomName generates a random VM name
-func generateRandomName() string {
+// GenerateRandomName generates a random VM name
+func GenerateRandomName() string {
 	rand.Seed(time.Now().UnixNano())
 	letters := []rune("abcdefghijklmnopqrstuvwxyz0123456789")
 	name := make([]rune, 8)
