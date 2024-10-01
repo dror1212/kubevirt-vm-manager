@@ -41,7 +41,7 @@ var _ = Describe("Communicate with running VM using pod IP", func() {
 		Expect(err).ToNot(HaveOccurred(), "Failed to authenticate with KubeVirt")
 
 		// Create the VM with the bash script passed as a command to be executed
-		resourceRequirements := util.ConvertCoreV1ToKubeVirtResourceRequirements(util.GenerateResourceRequirements("500m", "1000m", "1Gi", "1Gi"))
+		resourceRequirements := util.ConvertCoreV1ToKubeVirtResourceRequirements(util.GenerateResourceRequirements("4000m", "4000m", "4Gi", "4Gi"))
 		_, err = util.CreateVM(config, namespace, "rhel8-4-az-a", vmName, &resourceRequirements, nil, true, scriptPath, "")
 		Expect(err).ToNot(HaveOccurred(), "Failed to create VM")
 
@@ -62,18 +62,18 @@ var _ = Describe("Communicate with running VM using pod IP", func() {
 				Resources: util.GenerateResourceRequirements("100m", "400m", "200Mi", "200Mi"),
 			},
 		}
-
-		// Create the test client pod
-		_, err := util.CreatePod(config, namespace, testPodName, testContainers, nil, true)
-		Expect(err).ToNot(HaveOccurred(), "Failed to create test client pod")
-
+	
+		// Retry pod creation using the WaitFor-based retry mechanism
+		_, err := util.RetryPodCreationWithWait(clientset, config, namespace, testPodName, testContainers, nil, 20, 15*time.Second, 5*time.Minute)
+		Expect(err).ToNot(HaveOccurred(), "Failed to create test client pod after retries")
+	
 		// Wait for the test pod to complete and verify its status
 		Eventually(func() (bool, error) {
 			err := util.WaitForPodCompletionOrFailure(clientset, namespace, testPodName, 5*time.Second, 2*time.Minute)
 			if err != nil {
 				return false, err
 			}
-
+	
 			// Fetch pod logs and verify successful HTTP request (curl should return "200 OK")
 			podLogs, err := util.GetPodLogs(clientset, namespace, testPodName)
 			if err != nil {
@@ -81,7 +81,7 @@ var _ = Describe("Communicate with running VM using pod IP", func() {
 			}
 			return strings.Contains(podLogs, "HTTP Response Code: 200"), nil
 		}, 5*time.Minute, 10*time.Second).Should(BeTrue(), "Expected to access the VM successfully from another pod")
-	})
+	})	
 
 	AfterEach(func() {
 		// Clean up resources: Delete the test pod and the VM

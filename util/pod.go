@@ -83,6 +83,50 @@ func CreatePod(config *rest.Config, namespace, podName string, containerConfigs 
 	return createdPod, nil
 }
 
+// RetryPodCreationWithWait retries pod creation and waits for the pod to either run or complete successfully.
+func RetryPodCreationWithWait(clientset *kubernetes.Clientset, config *rest.Config, namespace, podName string, containers []ContainerConfig, labels map[string]string, retryAttempts int, interval, timeout time.Duration) (*corev1.Pod, error) {
+	var createdPod *corev1.Pod
+	var err error
+
+	for attempt := 0; attempt < retryAttempts; attempt++ {
+		LogInfo("Attempting to create pod %s (attempt %d/%d)", podName, attempt+1, retryAttempts)
+
+		// Try creating the pod
+		createdPod, err = CreatePod(config, namespace, podName, containers, labels, true)
+		if err != nil {
+			LogError("Failed to create pod %s on attempt %d. Error: %v", podName, attempt+1, err)
+
+			// Clean up the pod in case of failure
+			delErr := clientset.CoreV1().Pods(namespace).Delete(context.TODO(), podName, meta_v1.DeleteOptions{})
+			if delErr != nil {
+				LogError("Failed to delete pod %s after creation failure: %v", podName, delErr)
+			}
+			time.Sleep(interval) // Wait for the interval before retrying
+			continue
+		}
+
+		LogInfo("Pod %s created successfully.", podName)
+
+		// Wait for the pod to either run or complete
+		err = WaitForPodRunning(clientset, namespace, podName, interval, timeout)
+		if err == nil {
+			LogInfo("Pod %s is running or completed successfully.", podName)
+			return createdPod, nil
+		}
+
+		LogError("Pod %s failed or did not complete successfully. Retrying... Error: %v", podName, err)
+
+		// Delete the pod and retry if it failed or didn't reach running/completed state
+		err = clientset.CoreV1().Pods(namespace).Delete(context.TODO(), podName, meta_v1.DeleteOptions{})
+		if err != nil {
+			LogError("Failed to delete pod %s after failure: %v", podName, err)
+		}
+		time.Sleep(interval)
+	}
+
+	return nil, err
+}
+
 // GetPodLogs fetches the logs from a specific pod
 func GetPodLogs(clientset *kubernetes.Clientset, namespace, podName string) (string, error) {
     podLogOpts := corev1.PodLogOptions{}
