@@ -45,7 +45,7 @@ func CreatePod(config *rest.Config, namespace, podName string, containerConfigs 
 	// Generate containers from the container configurations
 	containers := []corev1.Container{}
 	for _, config := range containerConfigs {
-		containers = append(containers, generateContainerFromConfig(config))
+		containers = append(containers, GenerateContainerFromConfig(config))
 	}
 
 	// Define the Pod object
@@ -145,8 +145,18 @@ func GetPodLogs(clientset *kubernetes.Clientset, namespace, podName string) (str
     return buf.String(), nil
 }
 
-// generateContainerFromConfig creates a container spec from the given ContainerConfig
-func generateContainerFromConfig(config ContainerConfig) corev1.Container {
+// CreateContainerConfig creates a container configuration for a pod
+func CreateContainerConfig(name, image string, command []string, resources corev1.ResourceRequirements) ContainerConfig {
+	return ContainerConfig{
+		Name:      name,
+		Image:     image,
+		Command:   command,
+		Resources: resources,
+	}
+}
+
+// GenerateContainerFromConfig creates a container spec from the given ContainerConfig
+func GenerateContainerFromConfig(config ContainerConfig) corev1.Container {
 	return corev1.Container{
 		Name:      config.Name,
 		Image:     config.Image,

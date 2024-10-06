@@ -8,6 +8,7 @@ import (
 const (
     // Namespace and Template names
     DefaultTemplateNamespace = "openshift"
+    DefaultTemplateName = "rhel8-4-az-a"
 )
 
 const (

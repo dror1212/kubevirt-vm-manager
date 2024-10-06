@@ -7,6 +7,7 @@ require (
 	github.com/onsi/gomega v1.34.1
 	github.com/openshift/api v0.0.0-20240911192208-3e5de946111c
 	github.com/openshift/client-go v0.0.0-20240906181530-b2f7c4ab0984
+	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.9.3
 	golang.org/x/crypto v0.27.0
 	k8s.io/api v0.30.1

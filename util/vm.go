@@ -79,7 +79,12 @@ func addSSHKeyToCloudInit(existingData, sshPublicKey string) string {
 
 // CreateVM creates a VM using the given parameters and optionally adds an SSH public key
 func CreateVM(config *rest.Config, namespace, templateName, vmName string, resourceRequirements *kubevirtv1.ResourceRequirements, labels map[string]string, waitForCreation bool, scriptPath, sshPublicKeyPath string) (*kubevirtv1.VirtualMachine, error) {
-	if vmName == "" {
+    if templateName == "" {
+		templateName = consts.DefaultTemplateName
+		LogInfo("Using the default template", templateName)
+	}
+    
+    if vmName == "" {
 		vmName = GenerateRandomName()
 		LogInfo("Generated random VM name: %s", vmName)
 	}
