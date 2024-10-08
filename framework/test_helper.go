@@ -6,6 +6,7 @@ import (
 	"time"
 	"myproject/util"
 	. "github.com/onsi/gomega"
+	"github.com/openshift/client-go/route/clientset/versioned"
 	"github.com/pkg/errors"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -16,13 +17,15 @@ import (
 
 // TestContext holds reusable values across tests, including a random name for resources
 type TestContext struct {
-	Clientset  *kubernetes.Clientset
-	Config     *rest.Config
-	VirtClient kubecli.KubevirtClient
-	Namespace  string
-	RandomName string
+	Clientset    *kubernetes.Clientset
+	Config       *rest.Config
+	VirtClient   kubecli.KubevirtClient
+	RouteClient  *versioned.Clientset
+	Namespace    string
+	RandomName   string
 }
 
+// Setup initializes the environment (e.g., auth, logging) and sets the random name for each test
 // Setup initializes the environment (e.g., auth, logging) and sets the random name for each test
 func Setup(namespace string) *TestContext {
 	var err error
@@ -36,14 +39,18 @@ func Setup(namespace string) *TestContext {
 	virtClient, err := kubecli.GetKubevirtClientFromRESTConfig(config)
 	Expect(err).ToNot(HaveOccurred(), "Failed to authenticate with KubeVirt")
 
+	routeClient, err := versioned.NewForConfig(config)
+	Expect(err).ToNot(HaveOccurred(), "Failed to create Route client")
+
 	randomName := util.GenerateRandomName()
 
 	return &TestContext{
-		Clientset:  clientset,
-		Config:     config,
-		VirtClient: virtClient,
-		Namespace:  namespace,
-		RandomName: randomName,
+		Clientset:   clientset,
+		Config:      config,
+		VirtClient:  virtClient,
+		RouteClient: routeClient, // Add the Route client to the context
+		Namespace:   namespace,
+		RandomName:  randomName,
 	}
 }
 
@@ -59,6 +66,9 @@ func (ctx *TestContext) CleanupResource(resourceName string, resourceType string
 	case "service":
 		err := ctx.Clientset.CoreV1().Services(ctx.Namespace).Delete(context.TODO(), resourceName, metav1.DeleteOptions{})
 		Expect(err).ToNot(HaveOccurred(), "Failed to delete service %s", resourceName)
+	case "route":
+		err := ctx.RouteClient.RouteV1().Routes(ctx.Namespace).Delete(context.TODO(), resourceName, metav1.DeleteOptions{})
+		Expect(err).ToNot(HaveOccurred(), "Failed to delete route %s", resourceName)
 	}
 }
 
@@ -125,4 +135,18 @@ func (ctx *TestContext) CreateTestPodHelper(podName string, containers []util.Co
 func (ctx *TestContext) VerifyPodAccess(podName, expectedResponse string) {
 	err := ctx.WaitForPodAndCheckLogs(podName, expectedResponse, 5*time.Second, 5*time.Minute)
 	Expect(err).ToNot(HaveOccurred(), "Pod %s failed to access the service", podName)
+}
+
+// CreateRouteHelper creates a route for the given service with the given port and hostname
+func (ctx *TestContext) CreateRouteHelper(routeName, serviceName string, targetPort interface{}, hostname string) {
+    // Call the utility function to create the route
+    err := util.CreateRoute(ctx.RouteClient, ctx.Namespace, routeName, serviceName, targetPort, hostname)
+    Expect(err).ToNot(HaveOccurred(), "Failed to create route %s", routeName)
+}
+
+// GetRouteURLHelper fetches the URL of a route and returns it
+func (ctx *TestContext) GetRouteURLHelper(routeName string) string {
+	routeURL, err := util.GetRouteURL(ctx.RouteClient, ctx.Namespace, routeName)
+	Expect(err).ToNot(HaveOccurred(), "Failed to get URL for Route %s", routeName)
+	return routeURL
 }
