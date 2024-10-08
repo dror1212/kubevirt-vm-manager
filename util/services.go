@@ -5,7 +5,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
@@ -40,7 +40,7 @@ func CreateService(clientset *kubernetes.Clientset, namespace, serviceName strin
 
 	// Define the service object
 	service := &corev1.Service{
-		ObjectMeta: meta_v1.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:      serviceName,
 			Namespace: namespace,
 		},
@@ -52,7 +52,7 @@ func CreateService(clientset *kubernetes.Clientset, namespace, serviceName strin
 	}
 
 	// Create the service in Kubernetes
-	service, err := clientset.CoreV1().Services(namespace).Create(context.TODO(), service, meta_v1.CreateOptions{})
+	service, err := clientset.CoreV1().Services(namespace).Create(context.TODO(), service, metav1.CreateOptions{})
 	if err != nil {
 		LogError("Failed to create service %s: %v", serviceName, err)
 		return nil, err
@@ -68,7 +68,7 @@ func CreateService(clientset *kubernetes.Clientset, namespace, serviceName strin
 		}
 
 		// Fetch the service again to get the updated external IP
-		service, err = clientset.CoreV1().Services(namespace).Get(context.TODO(), serviceName, meta_v1.GetOptions{})
+		service, err = clientset.CoreV1().Services(namespace).Get(context.TODO(), serviceName, metav1.GetOptions{})
 		if err != nil {
 			LogError("Failed to get service %s after waiting for external IP: %v", serviceName, err)
 			return nil, err
@@ -83,7 +83,7 @@ func CreateService(clientset *kubernetes.Clientset, namespace, serviceName strin
 // GetServiceIP fetches the IP of a service, handling both LoadBalancer and ClusterIP types
 func GetServiceIP(clientset *kubernetes.Clientset, namespace, serviceName string) (string, error) {
 	// Fetch the service object
-	service, err := clientset.CoreV1().Services(namespace).Get(context.TODO(), serviceName, meta_v1.GetOptions{})
+	service, err := clientset.CoreV1().Services(namespace).Get(context.TODO(), serviceName, metav1.GetOptions{})
 	if err != nil {
 		LogError("Failed to retrieve service %s: %v", serviceName, err)
 		return "", err

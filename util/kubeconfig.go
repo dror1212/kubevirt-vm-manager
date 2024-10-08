@@ -8,7 +8,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
-	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // Authenticate sets up the Kubernetes client using in-cluster config or a kubeconfig file.
@@ -87,7 +87,7 @@ func AuthenticateFile(kubeconfigPath string) (*kubernetes.Clientset, *rest.Confi
 // It attempts to list namespaces to verify the connection.
 func VerifyConnection(clientset *kubernetes.Clientset) error {
 	// Attempt to list namespaces to verify connection
-	_, err := clientset.CoreV1().Namespaces().List(context.TODO(), meta_v1.ListOptions{})
+	_, err := clientset.CoreV1().Namespaces().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		errMsg := "failed to verify connection: %v"
 		LogError(errMsg, err)

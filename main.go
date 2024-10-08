@@ -8,7 +8,7 @@ import (
     "time"
     "myproject/util"
     corev1 "k8s.io/api/core/v1"
-    meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func main() {
@@ -92,7 +92,7 @@ func main() {
     // Wait for the service to get an external IP
     var externalIP string
     for i := 0; i < 10; i++ { // Poll for the external IP for a maximum of 10 times (adjust as needed)
-        svc, err := clientset.CoreV1().Services(namespace).Get(context.TODO(), serviceName, meta_v1.GetOptions{})
+        svc, err := clientset.CoreV1().Services(namespace).Get(context.TODO(), serviceName, metav1.GetOptions{})
         if err != nil {
             util.LogError("Failed to get service: %v", err)
             return

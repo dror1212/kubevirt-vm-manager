@@ -11,7 +11,7 @@ import (
 	"k8s.io/client-go/rest"
 	kubecli "kubevirt.io/client-go/kubecli"
 	corev1 "k8s.io/api/core/v1"
-	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // TestContext holds reusable values across tests, including a random name for resources
@@ -51,13 +51,13 @@ func Setup(namespace string) *TestContext {
 func (ctx *TestContext) CleanupResource(resourceName string, resourceType string) {
 	switch resourceType {
 	case "pod":
-		err := ctx.Clientset.CoreV1().Pods(ctx.Namespace).Delete(context.TODO(), resourceName, meta_v1.DeleteOptions{})
+		err := ctx.Clientset.CoreV1().Pods(ctx.Namespace).Delete(context.TODO(), resourceName, metav1.DeleteOptions{})
 		Expect(err).ToNot(HaveOccurred(), "Failed to delete pod %s", resourceName)
 	case "vm":
-		err := ctx.VirtClient.VirtualMachine(ctx.Namespace).Delete(context.TODO(), resourceName, meta_v1.DeleteOptions{})
+		err := ctx.VirtClient.VirtualMachine(ctx.Namespace).Delete(context.TODO(), resourceName, metav1.DeleteOptions{})
 		Expect(err).ToNot(HaveOccurred(), "Failed to delete VM %s", resourceName)
 	case "service":
-		err := ctx.Clientset.CoreV1().Services(ctx.Namespace).Delete(context.TODO(), resourceName, meta_v1.DeleteOptions{})
+		err := ctx.Clientset.CoreV1().Services(ctx.Namespace).Delete(context.TODO(), resourceName, metav1.DeleteOptions{})
 		Expect(err).ToNot(HaveOccurred(), "Failed to delete service %s", resourceName)
 	}
 }

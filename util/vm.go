@@ -10,7 +10,7 @@ import (
 	templatev1 "github.com/openshift/api/template/v1"
 	templateclientset "github.com/openshift/client-go/template/clientset/versioned"
 	kubevirtv1 "kubevirt.io/api/core/v1"
-	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubecli "kubevirt.io/client-go/kubecli"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
@@ -117,7 +117,7 @@ func CreateVM(config *rest.Config, namespace, templateName, vmName string, resou
 		return nil, err
 	}
 
-	template, err := templateClient.TemplateV1().Templates(consts.DefaultTemplateNamespace).Get(context.TODO(), templateName, meta_v1.GetOptions{})
+	template, err := templateClient.TemplateV1().Templates(consts.DefaultTemplateNamespace).Get(context.TODO(), templateName, metav1.GetOptions{})
 	if err != nil {
 		LogError("Failed to fetch template: %v", err)
 		return nil, err
@@ -197,7 +197,7 @@ func CreateVM(config *rest.Config, namespace, templateName, vmName string, resou
 	}
 
 	templateInstance := &templatev1.TemplateInstance{
-		ObjectMeta: meta_v1.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:      vmName,
 			Namespace: namespace,
 		},
@@ -212,7 +212,7 @@ func CreateVM(config *rest.Config, namespace, templateName, vmName string, resou
 		return nil, err
 	}
 
-	_, err = templateClient.TemplateV1().TemplateInstances(namespace).Create(context.TODO(), templateInstance, meta_v1.CreateOptions{})
+	_, err = templateClient.TemplateV1().TemplateInstances(namespace).Create(context.TODO(), templateInstance, metav1.CreateOptions{})
 	if err != nil {
 		LogError("Failed to create TemplateInstance: %v", err)
 		return nil, err
@@ -242,7 +242,7 @@ func CreateVM(config *rest.Config, namespace, templateName, vmName string, resou
 // GetVMPodIP fetches the Pod IP associated with the given VM
 func GetVMPodIP(virtClient kubecli.KubevirtClient, namespace, vmName string) (string, error) {
 	// Fetch the VM object
-	vm, err := virtClient.VirtualMachine(namespace).Get(context.TODO(), vmName, meta_v1.GetOptions{}) // Correct: pass by value
+	vm, err := virtClient.VirtualMachine(namespace).Get(context.TODO(), vmName, metav1.GetOptions{}) // Correct: pass by value
 	if err != nil {
 		LogError("Failed to fetch VM: %v", err)
 		return "", fmt.Errorf("failed to fetch VM: %v", err)
@@ -256,7 +256,7 @@ func GetVMPodIP(virtClient kubecli.KubevirtClient, namespace, vmName string) (st
 	}
 
 	// Fetch the pod associated with the VM
-	podList, err := virtClient.CoreV1().Pods(namespace).List(context.TODO(), meta_v1.ListOptions{
+	podList, err := virtClient.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{
 		LabelSelector: fmt.Sprintf("app=%s", vmName),
 	})
 	if err != nil {

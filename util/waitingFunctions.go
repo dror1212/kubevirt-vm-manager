@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
-	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	templateclientset "github.com/openshift/client-go/template/clientset/versioned"
 	templatev1 "github.com/openshift/api/template/v1"
 	"k8s.io/client-go/kubernetes"
@@ -15,7 +15,7 @@ import (
 
 func WaitForPodCompletionOrFailure(clientset *kubernetes.Clientset, namespace, podName string, interval, timeout time.Duration) error {
 	return WaitFor(func() (bool, error) {
-		pod, err := clientset.CoreV1().Pods(namespace).Get(context.TODO(), podName, meta_v1.GetOptions{})
+		pod, err := clientset.CoreV1().Pods(namespace).Get(context.TODO(), podName, metav1.GetOptions{})
 		if err != nil {
 			LogError("Error fetching pod: %v", err)
 			return false, err
@@ -40,7 +40,7 @@ func WaitForPodCompletionOrFailure(clientset *kubernetes.Clientset, namespace, p
 // WaitForPodRunning waits for a Pod to reach the Running or Completed state.
 func WaitForPodRunning(clientset *kubernetes.Clientset, namespace, podName string, interval, timeout time.Duration) error {
 	return WaitFor(func() (bool, error) {
-		pod, err := clientset.CoreV1().Pods(namespace).Get(context.TODO(), podName, meta_v1.GetOptions{})
+		pod, err := clientset.CoreV1().Pods(namespace).Get(context.TODO(), podName, metav1.GetOptions{})
 		if err != nil {
 			LogError("Error fetching pod: %v", err)
 			return false, err
@@ -65,7 +65,7 @@ func WaitForPodRunning(clientset *kubernetes.Clientset, namespace, podName strin
 // WaitForVMReady waits for a KubeVirt VM to be ready.
 func WaitForVMReady(virtClient kubecli.KubevirtClient, namespace, vmName string, interval, timeout time.Duration) error {
 	return WaitFor(func() (bool, error) {
-		vm, err := virtClient.VirtualMachine(namespace).Get(context.TODO(), vmName, meta_v1.GetOptions{})
+		vm, err := virtClient.VirtualMachine(namespace).Get(context.TODO(), vmName, metav1.GetOptions{})
 		if err != nil {
 			LogError("Error fetching VM: %v", err)
 			return false, err
@@ -82,7 +82,7 @@ func WaitForVMReady(virtClient kubecli.KubevirtClient, namespace, vmName string,
 // WaitForTemplateInstanceReady waits for an OpenShift TemplateInstance to be instantiated.
 func WaitForTemplateInstanceReady(templateClient *templateclientset.Clientset, namespace, templateInstanceName string, interval, timeout time.Duration) error {
 	return WaitFor(func() (bool, error) {
-		templateInstance, err := templateClient.TemplateV1().TemplateInstances(namespace).Get(context.TODO(), templateInstanceName, meta_v1.GetOptions{})
+		templateInstance, err := templateClient.TemplateV1().TemplateInstances(namespace).Get(context.TODO(), templateInstanceName, metav1.GetOptions{})
 		if err != nil {
 			LogError("Error fetching TemplateInstance: %v", err)
 			return false, err
@@ -101,7 +101,7 @@ func WaitForTemplateInstanceReady(templateClient *templateclientset.Clientset, n
 // WaitForServiceReady waits for a LoadBalancer service to have an external IP assigned.
 func WaitForServiceReady(clientset *kubernetes.Clientset, namespace, serviceName string, interval, timeout time.Duration) error {
 	return WaitFor(func() (bool, error) {
-		service, err := clientset.CoreV1().Services(namespace).Get(context.TODO(), serviceName, meta_v1.GetOptions{})
+		service, err := clientset.CoreV1().Services(namespace).Get(context.TODO(), serviceName, metav1.GetOptions{})
 		if err != nil {
 			LogError("Error fetching service: %v", err)
 			return false, err

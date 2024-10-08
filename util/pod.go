@@ -7,7 +7,7 @@ import (
 	"io"
 
 	corev1 "k8s.io/api/core/v1"
-	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"myproject/consts"
@@ -50,7 +50,7 @@ func CreatePod(config *rest.Config, namespace, podName string, containerConfigs 
 
 	// Define the Pod object
 	pod := &corev1.Pod{
-		ObjectMeta: meta_v1.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:      podName,
 			Namespace: namespace,
 			Labels:    labels,
@@ -62,7 +62,7 @@ func CreatePod(config *rest.Config, namespace, podName string, containerConfigs 
 	}
 
 	// Create the Pod in Kubernetes
-	createdPod, err := clientset.CoreV1().Pods(namespace).Create(context.TODO(), pod, meta_v1.CreateOptions{})
+	createdPod, err := clientset.CoreV1().Pods(namespace).Create(context.TODO(), pod, metav1.CreateOptions{})
 	if err != nil {
 		LogError("Failed to create Pod: %v", err)
 		return nil, err
@@ -97,7 +97,7 @@ func RetryPodCreationWithWait(clientset *kubernetes.Clientset, config *rest.Conf
 			LogError("Failed to create pod %s on attempt %d. Error: %v", podName, attempt+1, err)
 
 			// Clean up the pod in case of failure
-			delErr := clientset.CoreV1().Pods(namespace).Delete(context.TODO(), podName, meta_v1.DeleteOptions{})
+			delErr := clientset.CoreV1().Pods(namespace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
 			if delErr != nil {
 				LogError("Failed to delete pod %s after creation failure: %v", podName, delErr)
 			}
@@ -117,7 +117,7 @@ func RetryPodCreationWithWait(clientset *kubernetes.Clientset, config *rest.Conf
 		LogError("Pod %s failed or did not complete successfully. Retrying... Error: %v", podName, err)
 
 		// Delete the pod and retry if it failed or didn't reach running/completed state
-		err = clientset.CoreV1().Pods(namespace).Delete(context.TODO(), podName, meta_v1.DeleteOptions{})
+		err = clientset.CoreV1().Pods(namespace).Delete(context.TODO(), podName, metav1.DeleteOptions{})
 		if err != nil {
 			LogError("Failed to delete pod %s after failure: %v", podName, err)
 		}
