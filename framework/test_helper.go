@@ -5,13 +5,12 @@ import (
 	"strings"
 	"time"
 	"myproject/util"
-	"myproject/consts"
-
 	. "github.com/onsi/gomega"
 	"github.com/pkg/errors"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	kubecli "kubevirt.io/client-go/kubecli"
+	corev1 "k8s.io/api/core/v1"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -64,8 +63,7 @@ func (ctx *TestContext) CleanupResource(resourceName string, resourceType string
 }
 
 // CreateTestVM creates a VM with default settings using the random name from the context
-func (ctx *TestContext) CreateTestVM(scriptPath string, templateName string) {
-	vmName := consts.TestPrefix + ctx.RandomName
+func (ctx *TestContext) CreateTestVM(vmName string, scriptPath string, templateName string) {
 	resourceRequirements := util.ConvertCoreV1ToKubeVirtResourceRequirements(
 		util.GenerateResourceRequirements("4000m", "4000m", "4Gi", "4Gi"))
 
@@ -73,14 +71,6 @@ func (ctx *TestContext) CreateTestVM(scriptPath string, templateName string) {
 	Expect(err).ToNot(HaveOccurred(), "Failed to create VM")
 
 	// Optionally return the VM name for other uses
-}
-
-// CreateTestPod creates a test pod using the random name from the context
-func (ctx *TestContext) CreateTestPod(image string, containerConfig []util.ContainerConfig) string {
-	podName := consts.TestPrefix + "-client-" + ctx.RandomName
-	_, err := util.CreatePod(ctx.Config, ctx.Namespace, podName, containerConfig, nil, true)
-	Expect(err).ToNot(HaveOccurred(), "Failed to create pod")
-	return podName
 }
 
 // CreateTestPodWithRetry creates a test pod with retries
@@ -117,4 +107,22 @@ func (ctx *TestContext) WaitForPodAndCheckLogs(podName, logSubstring string, che
 
 	util.LogInfo("Successfully found log substring %s in pod %s", logSubstring, podName)
 	return nil
+}
+
+// CreateServiceHelper creates a Kubernetes service of a specified type (ClusterIP, LoadBalancer, etc.)
+func (ctx *TestContext) CreateServiceHelper(serviceName string, serviceType corev1.ServiceType, servicePorts []corev1.ServicePort, labels map[string]string) {
+	_, err := util.CreateService(ctx.Clientset, ctx.Namespace, serviceName, serviceType, servicePorts, labels)
+	Expect(err).ToNot(HaveOccurred(), "Failed to create service %s of type %s", serviceName, serviceType)
+}
+
+// CreateTestPodHelper creates a test pod with a retry mechanism
+func (ctx *TestContext) CreateTestPodHelper(podName string, containers []util.ContainerConfig) {
+	err := ctx.CreateTestPodWithRetry(podName, containers, 20, 15*time.Second, 5*time.Minute)
+	Expect(err).ToNot(HaveOccurred(), "Failed to create test pod %s", podName)
+}
+
+// VerifyPodAccess verifies if a pod can access a service by checking logs for a specific response (e.g., HTTP 200)
+func (ctx *TestContext) VerifyPodAccess(podName, expectedResponse string) {
+	err := ctx.WaitForPodAndCheckLogs(podName, expectedResponse, 5*time.Second, 5*time.Minute)
+	Expect(err).ToNot(HaveOccurred(), "Pod %s failed to access the service", podName)
 }
