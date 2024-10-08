@@ -28,7 +28,7 @@ var _ = Describe("Communicate with running VM using pod IP", func() {
 		testPodName = consts.TestPrefix + "-client-" + ctx.RandomName
 
 		// Create the VM
-		ctx.CreateTestVM(scriptPath, "")
+		ctx.CreateTestVM(vmName, scriptPath, "")
 
 		// Fetch the VM Pod IP
 		Eventually(func() (string, error) {
@@ -47,13 +47,11 @@ var _ = Describe("Communicate with running VM using pod IP", func() {
 			util.CreateContainerConfig("curl-container", imageClient, []string{"curl", "--fail", "--retry", "5", "-w", "HTTP Response Code: %{http_code}\n", "http://" + vmPodIP + ":80"}, resources),
 		}
 
-		// Create the test pod using the retry mechanism
-		err := ctx.CreateTestPodWithRetry(testPodName, testContainers, 20, 15*time.Second, 5*time.Minute)
-		Expect(err).ToNot(HaveOccurred(), "Failed to create test client pod after retries")
+		// Create the test pod using the helper function
+		ctx.CreateTestPodHelper(testPodName, testContainers)
 
-		// Wait for the pod to complete and verify its logs contain HTTP 200 response
-		err = ctx.WaitForPodAndCheckLogs(testPodName, "HTTP Response Code: 200", 5*time.Second, 5*time.Minute)
-		Expect(err).ToNot(HaveOccurred(), "Expected to access the VM successfully from another pod")
+		// Verify the pod can access the VM using the helper function
+		ctx.VerifyPodAccess(testPodName, "HTTP Response Code: 200")
 	})
 
 	AfterEach(func() {

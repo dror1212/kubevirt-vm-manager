@@ -36,22 +36,20 @@ var _ = Describe("Service type LoadBalancer on Pod", func() {
 		}
 
 		// Create the main test pod
-		err := ctx.CreateTestPodWithRetry(podName, containers, 20, 15*time.Second, 5*time.Minute)
-		Expect(err).ToNot(HaveOccurred(), "Failed to create the main pod")
+		ctx.CreateTestPodHelper(podName, containers)
 
 		// Create a LoadBalancer service for the pod
 		servicePorts := []corev1.ServicePort{
 			util.GeneratePort("http", 80, 80, "TCP"),
 		}
-		_, err = util.CreateService(ctx.Clientset, ctx.Namespace, serviceName, corev1.ServiceTypeLoadBalancer, servicePorts, map[string]string{"app": podName})
-		Expect(err).ToNot(HaveOccurred(), "Failed to create LoadBalancer service")
+		ctx.CreateServiceHelper(serviceName, corev1.ServiceTypeLoadBalancer, servicePorts, map[string]string{"app": podName})
 	})
 
 	It("should expose the service with a LoadBalancer and allow access to a pod from another pod", func() {
 		// Wait for the service to get an external IP
 		Eventually(func() (string, error) {
 			var err error
-			externalIP, err = util.GetExternalIP(ctx.Clientset, ctx.Namespace, serviceName)
+			externalIP, err = util.GetServiceIP(ctx.Clientset, ctx.Namespace, serviceName)
 			return externalIP, err
 		}, 2*time.Minute, 10*time.Second).ShouldNot(BeEmpty(), "Expected service to get an external IP")
 
@@ -61,12 +59,10 @@ var _ = Describe("Service type LoadBalancer on Pod", func() {
 		}
 
 		// Create the test pod using the retry mechanism
-		err := ctx.CreateTestPodWithRetry(testPodName, testContainers, 20, 15*time.Second, 5*time.Minute)
-		Expect(err).ToNot(HaveOccurred(), "Failed to create test client pod")
+		ctx.CreateTestPodHelper(testPodName, testContainers)
 
 		// Wait for the test pod to complete and verify its status
-		err = ctx.WaitForPodAndCheckLogs(testPodName, "HTTP Response Code: 200", 5*time.Second, 5*time.Minute)
-		Expect(err).ToNot(HaveOccurred(), "Expected to access the service successfully from another pod")
+		ctx.VerifyPodAccess(testPodName, "HTTP Response Code: 200")
 	})
 
 	AfterEach(func() {

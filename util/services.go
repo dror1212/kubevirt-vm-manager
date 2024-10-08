@@ -2,7 +2,6 @@ package util
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -11,8 +10,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
+// GeneratePort generates a ServicePort object based on the provided values
 func GeneratePort(name string, port, targetPort int, protocol string) corev1.ServicePort {
-	// Set the protocol type based on the input
 	var protocolType corev1.Protocol
 	switch protocol {
 	case "TCP":
@@ -20,21 +19,19 @@ func GeneratePort(name string, port, targetPort int, protocol string) corev1.Ser
 	case "UDP":
 		protocolType = corev1.ProtocolUDP
 	default:
-		protocolType = corev1.ProtocolTCP // Default to TCP if protocol is not recognized
+		protocolType = corev1.ProtocolTCP // Default to TCP if not recognized
 	}
 
-	// Create and return the ServicePort
 	return corev1.ServicePort{
 		Name:       name,
-		Port:       int32(port),               // Port should be of type int32
-		TargetPort: intstr.FromInt(targetPort), // TargetPort is an IntOrString
-		Protocol:   protocolType,              // Set the protocol
+		Port:       int32(port),
+		TargetPort: intstr.FromInt(targetPort),
+		Protocol:   protocolType,
 	}
 }
 
 // CreateService creates a Kubernetes service of a specified type (ClusterIP, NodePort, LoadBalancer)
 func CreateService(clientset *kubernetes.Clientset, namespace, serviceName string, serviceType corev1.ServiceType, ports []corev1.ServicePort, labels map[string]string) (*corev1.Service, error) {
-	// Use the service name as the default label if no labels are provided
 	if labels == nil {
 		labels = map[string]string{
 			"app": serviceName,
@@ -50,44 +47,64 @@ func CreateService(clientset *kubernetes.Clientset, namespace, serviceName strin
 		Spec: corev1.ServiceSpec{
 			Type:     serviceType,
 			Ports:    ports,
-			Selector: labels, // Use the provided labels for the selector
+			Selector: labels,
 		},
 	}
 
 	// Create the service in Kubernetes
 	service, err := clientset.CoreV1().Services(namespace).Create(context.TODO(), service, meta_v1.CreateOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("failed to create service: %v", err)
+		LogError("Failed to create service %s: %v", serviceName, err)
+		return nil, err
 	}
 
 	// If the service type is LoadBalancer, wait for the external IP to be assigned
 	if serviceType == corev1.ServiceTypeLoadBalancer {
-		LogInfo("Waiting for the LoadBalancer service %s to get an external IP...\n", serviceName)
+		LogInfo("Waiting for the LoadBalancer service %s to get an external IP...", serviceName)
 		err := WaitForServiceReady(clientset, namespace, serviceName, 5*time.Second, 120*time.Second)
 		if err != nil {
-			return nil, fmt.Errorf("error waiting for service to be ready: %v", err)
+			LogError("Error waiting for LoadBalancer service %s to be ready: %v", serviceName, err)
+			return nil, err
 		}
 
 		// Fetch the service again to get the updated external IP
 		service, err = clientset.CoreV1().Services(namespace).Get(context.TODO(), serviceName, meta_v1.GetOptions{})
 		if err != nil {
-			return nil, fmt.Errorf("failed to get service after waiting: %v", err)
+			LogError("Failed to get service %s after waiting for external IP: %v", serviceName, err)
+			return nil, err
 		}
 
-		LogInfo("Service %s is ready with external IP: %s\n", serviceName, service.Status.LoadBalancer.Ingress[0].IP)
+		LogInfo("Service %s is ready with external IP: %s", serviceName, service.Status.LoadBalancer.Ingress[0].IP)
 	}
 
 	return service, nil
 }
 
-// GetExternalIP fetches the external IP of a LoadBalancer service
-func GetExternalIP(clientset *kubernetes.Clientset, namespace, serviceName string) (string, error) {
-    service, err := clientset.CoreV1().Services(namespace).Get(context.TODO(), serviceName, meta_v1.GetOptions{})
-    if err != nil {
-        return "", err
-    }
-    if len(service.Status.LoadBalancer.Ingress) > 0 {
-        return service.Status.LoadBalancer.Ingress[0].IP, nil
-    }
-    return "", nil
+// GetServiceIP fetches the IP of a service, handling both LoadBalancer and ClusterIP types
+func GetServiceIP(clientset *kubernetes.Clientset, namespace, serviceName string) (string, error) {
+	// Fetch the service object
+	service, err := clientset.CoreV1().Services(namespace).Get(context.TODO(), serviceName, meta_v1.GetOptions{})
+	if err != nil {
+		LogError("Failed to retrieve service %s: %v", serviceName, err)
+		return "", err
+	}
+
+	// Handle LoadBalancer service: return external IP
+	if service.Spec.Type == corev1.ServiceTypeLoadBalancer {
+		if len(service.Status.LoadBalancer.Ingress) > 0 {
+			return service.Status.LoadBalancer.Ingress[0].IP, nil
+		}
+		LogError("LoadBalancer service %s has no external IP assigned", serviceName)
+		return "", nil
+	}
+
+	// Handle ClusterIP service: return ClusterIP
+	if service.Spec.Type == corev1.ServiceTypeClusterIP {
+		LogInfo("Service %s has a ClusterIP: %s", serviceName, service.Spec.ClusterIP)
+		return service.Spec.ClusterIP, nil
+	}
+
+	// Handle unsupported service types
+	LogError("Unsupported service type %s for service %s", service.Spec.Type, serviceName)
+	return "", nil
 }
